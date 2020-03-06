@@ -10,6 +10,7 @@
 
 3. Run inside vagrant vm;
     ```
+    sudo su - ansibleuser
     pip install boto boto3 botocore  --upgrade
     pip install awscli --upgrade --user
     ```
