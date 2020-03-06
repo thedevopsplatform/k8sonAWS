@@ -1,0 +1,57 @@
+# - name: Create a IAM Master role with description
+#   iam_role:
+#     name: k8s-cluster-iam-master-role
+#     assume_role_policy_document: "{{ lookup('file','rolepolicy.json') }}"
+#     description: This is Master role
+
+# - name: Create a IAM worker role with description
+#   iam_role:
+#     name: k8s-cluster-iam-worker-role
+#     assume_role_policy_document: "{{ lookup('file','rolepolicy.json') }}"
+#     description: This is worker role
+    
+# - name: Assign a Master policy
+#   iam_policy:
+#     iam_type: role
+#     iam_name: k8s-cluster-iam-master-role
+#     policy_name: k8s-cluster-iam-master-policy
+#     state: present
+#     policy_json: "{{ lookup( 'file', 'masterpolicy.json') }}"
+    
+# - name: Assign a worker policy
+#   iam_policy:
+#     iam_type: role
+#     iam_name: k8s-cluster-iam-worker-role
+#     policy_name: k8s-cluster-iam-worker-policy
+#     state: present
+#     policy_json: "{{ lookup( 'file', 'workerpolicy.json') }}"
+
+- name: Create IAM policy for master
+  iam_managed_policy:
+    policy_name: "k8s-cluster-iam-master-policy"
+    policy: "{{ lookup('file', 'masterpolicy.json') }}"
+    state: present
+  register: masterpolicy
+
+- name: Create IAM policy for worker
+  iam_managed_policy:
+    policy_name: "k8s-cluster-iam-worker-policy"
+    policy: "{{ lookup('file', 'workerpolicy.json') }}"
+    state: present
+  register: workerpolicy
+
+- name: "Create a master role and attach a master policy'"
+  iam_role:
+    name: k8s-cluster-iam-master-role
+    create_instance_profile: yes
+    assume_role_policy_document: "{{ lookup('file','rolepolicy.json') }}"
+    managed_policy:
+      - "{{ masterpolicy.policy['arn'] }}"
+
+- name: "Create a worker role and attach a worker policy'"
+  iam_role:
+    name: k8s-cluster-iam-worker-role
+    create_instance_profile: yes
+    assume_role_policy_document: "{{ lookup('file','rolepolicy.json') }}"
+    managed_policy:
+      - "{{ workerpolicy.policy['arn'] }}"

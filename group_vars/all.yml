@@ -1,0 +1,76 @@
+---
+
+#include: secret.yml
+
+### General Variables - Enter/or Change these details ###
+key_name: ansibleuser
+pub_key_path: /vagrant/id_rsa.pub
+instance_type: t2.medium
+ami_id: ami-0ee0b284267ea6cde # (ubuntu) 
+name: cicd
+region: ap-southeast-1
+bastion_num: 1
+master_num: 1
+worker1_num: 1
+worker2_num: 1
+
+### a map defining the subnets we will build in the VPC ###
+cidr_block: 10.244.0.0/16
+
+vpc_subnets:
+  public-a:
+    cidr: 10.244.1.0/24
+    az: "{{ region }}a"
+    map_public: yes
+  public-b:
+    cidr: 10.244.2.0/24
+    az: "{{ region }}b"
+  private-a:
+    cidr: 10.244.3.0/24
+    az: "{{ region }}a"
+  private-b:
+    cidr: 10.244.4.0/24
+    az: "{{ region }}b"  
+  private-1a:
+    cidr: 10.244.5.0/24
+    az: "{{ region }}a"
+  private-1b:
+    cidr: 10.244.6.0/24
+    az: "{{ region }}b"
+  private-2a:
+    cidr: 10.244.7.0/24
+    az: "{{ region }}a"
+  private-2b:
+    cidr: 10.244.8.0/24
+    az: "{{ region }}b"     
+
+
+### list defining the security groups for our VPC ###
+vpc_security_groups:
+    public-web:
+      name: allow-public-web
+      description: "Allow public web"
+      rules:
+        - proto: tcp
+          cidr_ip: 0.0.0.0/0
+          ports:
+            - 80
+            - 443
+            - 22
+            - 8080
+
+    private-access:
+      name: allow-ports-within-vpc
+      description: "allow traffic from vpcs public subnets"   
+      rules:
+        - proto: all
+          cidr_ip: 10.244.0.0/16 
+        - proto: all
+          cidr_ip: Enter_your_public_ip/32   
+
+
+
+
+
+
+

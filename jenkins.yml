@@ -1,0 +1,90 @@
+---
+- name: Set up infra
+  hosts: localhost
+  gather_facts: no
+  roles:
+    - infra
+    - ec2-asg
+
+# - name: Fetch from bastion
+#   hosts: tag_Name_bastion
+#   gather_facts: no
+#   become: yes
+#   tasks:
+#     - name: fetch some.txt
+#       fetch:  
+#         src: some.txt
+#         dest: /tmp/
+#       register: fetch
+    
+#     - debug:
+#         var: fetch.dest  
+
+# - name: copy to bastion1
+#   hosts: tag_Name_bastion1
+#   gather_facts: no
+#   become: yes
+#   tasks:
+#     # - name: collect instance facts
+#     #   local_action: ec2_instance_info
+#     #   args:  
+#     #         region: "{{ region }}"
+#     #         filters:
+#     #           "tag:env": "prod"
+#     #           instance-state-name: [ "running" ]
+#     #   register: instance_info  
+    
+#     # - debug:
+#     #     var: instance_info  
+
+#     # - name: promote the privateip fact from the bastion group
+#     #   set_fact:
+#     #     all_private_ips: "{{ all_private_ips | default({}) | combine({ item.tags.Name: item.private_ip_address }) }}"
+#     #   loop: "{{ instance_info.instances }}"
+
+#     # - debug:
+#     #     var: all_private_ips
+
+#     # - set_fact:
+#     #     privateip: "{{ all_private_ips['bastion'] }}"
+
+#     # - debug:
+#     #     var: privateip  
+
+#     - name: promote the privateip fact from the bastion group
+#       set_fact:
+#         dest: "{{ bastion.fetch.dest }}"
+#       vars:
+#         bastion: "{{ hostvars[groups['tag_Name_bastion'][0]] }}"
+    
+#     - debug:
+#         var: dest
+
+#     - name: create .kube directory
+#       become: yes
+#       shell: (cd /var/lib/jenkins/; mkdir .kube)
+
+#     # - name: check user
+#     #   become_user: jenkins
+#     #   become: sudo
+#     #   shell: whoami
+#     #   register: who
+    
+#     # - name: work directory
+#     #   become_user: jenkins
+#     #   become: sudo
+#     #   shell: pwd
+#     #   register: workdir      
+
+#     # - debug:
+#     #     var: who  
+
+#     # - debug:
+#     #     var: workdir     
+
+#     - name: copy some.txt
+#       become: yes
+#       copy:  
+#         src: "{{ dest }}"
+#         dest: /var/lib/jenkins/.kube/
+    

@@ -1,0 +1,10 @@
+- name: create a VPC
+  local_action: ec2_vpc_net
+  args:
+    name: "{{ name }}"
+    cidr_block: "{{ cidr_block }}"
+    region: "{{ region }}"
+    tags:
+      env: prod
+      kubernetes.io/cluster/kubernetes: owned
+  register: myvpc

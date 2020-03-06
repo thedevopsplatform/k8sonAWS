@@ -1,0 +1,138 @@
+---
+    - name: create public node launch template
+      local_action: ec2_launch_template
+      args:
+        name: public_server_lt
+        image_id: ami-0e2edfa0743ae2fba
+        key_name: "{{ key_name }}"
+        region: "{{ region }}"
+        user_data: "{{ lookup('file', 'bastionen.sh') }}"
+        instance_type: "{{ instance_type }}" 
+        network_interfaces: 
+          - device_index: 0
+            associate_public_ip_address: yes 
+            groups:
+                - "{{ sg_ids['public-web'] }}"
+                #- "{{ sg_ids['my-ip'] }}"
+                - "{{ sg_ids['private-access'] }}" 
+
+    - name: create master node launch template
+      local_action: ec2_launch_template
+      args:
+        name: master_node_lt
+        image_id: "{{ ami_id }}"
+        key_name: "{{ key_name }}"
+        region: "{{ region }}"
+        user_data: "{{ lookup('file', 'kubeuser.sh') }}"
+        instance_type: "{{ instance_type }}"
+        iam_instance_profile: k8s-cluster-iam-master-role
+        network_interfaces:
+          - device_index: 0
+            associate_public_ip_address: no    
+            groups:
+              #- "{{ sg_ids['my-ip'] }}"
+              - "{{ sg_ids['private-access'] }}"
+
+    - name: create worker node launch template
+      local_action: ec2_launch_template
+      args:
+        name: worker_node_lt
+        image_id: "{{ ami_id }}"
+        key_name: "{{ key_name }}"
+        region: "{{ region }}"
+        user_data: "{{ lookup('file', 'kubeuser.sh') }}"
+        instance_type: "{{ instance_type }}"
+        iam_instance_profile: k8s-cluster-iam-worker-role
+        network_interfaces:
+          - device_index: 0
+            associate_public_ip_address: no    
+            groups:
+              #- "{{ sg_ids['my-ip'] }}"
+              - "{{ sg_ids['private-access'] }}"
+
+    - local_action: ec2_asg
+      args:
+        name: bastion_asg
+        launch_template:
+          launch_template_name: public_server_lt
+        health_check_period: 60
+        health_check_type: ELB
+        min_size: "{{ bastion_num }}"
+        max_size: "{{ bastion_num }}"
+        desired_capacity: "{{ bastion_num }}"
+        region: "{{ region }}"
+        availability_zones: 
+        vpc_zone_identifier: 
+          - "{{ vpc_subnet_ids['public-a'] }}"
+          - "{{ vpc_subnet_ids['public-b'] }}"
+        tags:
+          - env: prod
+          - type: infra
+          - Name: bastion
+      register: bastion_asg_result
+
+    - local_action: ec2_asg
+      args:
+        name: Master_asg
+        launch_template:
+          launch_template_name: master_node_lt
+        health_check_period: 60
+        health_check_type: ELB
+        min_size: "{{ master_num }}"
+        max_size: "{{ master_num }}"
+        desired_capacity: "{{ master_num }}"
+        region: "{{ region }}"
+        availability_zones: 
+        vpc_zone_identifier: 
+          - "{{ vpc_subnet_ids['private-a'] }}"
+          - "{{ vpc_subnet_ids['private-b'] }}"
+        tags:
+          - env: prod
+          - type: kubernetes
+          - Name: Master
+          - kubernetes.io/cluster/kubernetes: owned
+      register: Master_asg_result  
+
+    - local_action: ec2_asg
+      args:
+        name: Worker1_asg
+        launch_template:
+          launch_template_name: worker_node_lt
+        health_check_period: 60
+        health_check_type: ELB
+        min_size: "{{ worker1_num }}"
+        max_size: "{{ worker1_num }}"
+        desired_capacity: "{{ worker1_num }}"
+        region: "{{ region }}"
+        availability_zones: 
+        vpc_zone_identifier: 
+          - "{{ vpc_subnet_ids['private-1a'] }}"
+          - "{{ vpc_subnet_ids['private-1b'] }}"
+        tags:
+          - env: prod
+          - type: kuberenetes
+          - Name: Worker1
+          - kubernetes.io/cluster/kubernetes: owned
+      register: Worker1_asg_result  
+      
+    - local_action: ec2_asg      
+      args:
+        name: Worker2_asg
+        launch_template:
+          launch_template_name: worker_node_lt
+        health_check_period: 60
+        health_check_type: ELB
+        min_size: "{{ worker2_num }}"
+        max_size: "{{ worker2_num }}"
+        desired_capacity: "{{ worker2_num }}"
+        region: "{{ region }}"
+        availability_zones: 
+        vpc_zone_identifier: 
+          - "{{ vpc_subnet_ids['private-2a'] }}"
+          - "{{ vpc_subnet_ids['private-2b'] }}"
+        tags:
+          - env: prod
+          - type: kubernetes
+          - Name: Worker2
+          - kubernetes.io/cluster/kubernetes: owned
+      register: Worker2_asg_result        

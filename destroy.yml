@@ -1,0 +1,110 @@
+- name: Delete everything
+  hosts: localhost
+  tasks:
+
+    - name: remove bastion asg
+      local_action: ec2_asg
+      args:
+        name: bastion_asg
+        state: absent
+
+    - name: remove master asg
+      local_action: ec2_asg
+      args:
+        name: Master_asg
+        state: absent
+
+    - name: remove worker1 asg
+      local_action: ec2_asg
+      args:
+        name: Worker1_asg
+        state: absent
+
+    - name: remove worker2 asg
+      local_action: ec2_asg
+      args:
+        name: Worker2_asg
+        state: absent
+
+    - name: remove public launch template
+      local_action: ec2_launch_template
+      args:
+        name: public_server_lt
+        state: absent
+
+    - name: remove master launch template
+      local_action: ec2_launch_template
+      args:
+        name: master_node_lt
+        state: absent
+
+    - name: remove worker launch template
+      local_action: ec2_launch_template
+      args:
+        name: worker_node_lt
+        state: absent        
+
+    - name: List all managed nat gateways in the region
+      ec2_vpc_nat_gateway_facts:
+        region: "{{ region }}"
+      register: gateways_to_remove 
+
+    # - name: Debugging the result
+    #   debug:
+    #     msg: "{{ gateways_to_remove }}"
+
+    - name: Delete nat gateway using discovered nat gateways from facts module.
+      ec2_vpc_nat_gateway:
+        state: absent
+        region: "{{ region }}"
+        wait: yes
+        nat_gateway_id: "{{ item.nat_gateway_id }}"
+        release_eip: yes
+      with_items: "{{ gateways_to_remove.result }}"    
+
+    - name: gather vpc fact
+      local_action: ec2_vpc_net_facts
+      args:
+        filters:
+          "tag:Name": mypysqlapp
+      register: vpcfacts  
+
+    # - name: Debugging the result
+    #   debug:
+    #     msg: "{{ vpcfacts }}"
+
+    # - name: List all managed igw gateways in the region
+    #   ec2_vpc_igw_facts:
+    #     region: "{{ region }}"
+    #   register: igateways_to_remove 
+
+    - name: Delete igw gateway using discovered igw gateways from facts module.
+      ec2_vpc_igw:
+        vpc_id: "{{ item.vpc_id }}"
+        state: absent
+        region: "{{ region }}"  
+      with_items: "{{ vpcfacts.vpcs }}"
+
+    # - ec2_vpc_route_table_facts:
+    #     filters:
+    #       vpc_id: "{{ item.vpc_id }}"
+    #       region: "{{ region }}" 
+    #   with_items: "{{ vpcfacts.vpcs }}"
+    #   register: route_table
+
+    # - name: delete route table
+    #   ec2_vpc_route_table:
+    #     vpc_id: "{{ item.vpc_id }}"
+    #     region: "{{ region }}" 
+    #     route_table_id: "{{ route_table.id }}"
+    #     lookup: id
+    #     state: absent
+    #   with_items: "{{ vpcfacts.vpcs }}"
+
+    # - name: remove subnets and route tables from VPC
+    #   local_action: ec2_vpc_net
+    #   args: 
+    #     name: "{{ name }}"
+    #     region: "{{ region }}"
+    #     cidr_block: "{{ cidr_block }}"
+    #     state: absent 

@@ -1,0 +1,50 @@
+---
+# tasks file for bastion
+    - name: collect instance facts
+      local_action: ec2_instance_info
+      args:  
+            region: "{{ region }}"
+            filters:
+              "tag:env": "prod"
+              instance-state-name: [ "running" ]
+      register: instance_info    
+
+    - name: "set fact: Instance ips"
+      set_fact:
+          public_ip: "{{ pub_instance_ips | default({}) | combine({ item.tags.Name: item.public_ip_address}) }}"
+      loop: "{{ instance_info.instances | json_query(\"[?public_ip_address]\") | list }}"
+
+    - set_fact:
+        publicip: "{{ public_ip['bastion']}}"
+
+    - debug:
+        var: publicip
+
+    - name: promote the privateip fact from the bastion group
+      set_fact:
+        dest: "{{ master.fetch.dest }}"
+      vars:
+        master: "{{ hostvars[groups['tag_Name_Master'][0]] }}"
+    
+    - debug:
+        var: dest
+
+    - name: create .kube directory
+      become: yes
+      shell: (cd /var/lib/jenkins/; mkdir .kube)
+    
+    - name: copy config to jenkins
+      become: yes
+      copy:  
+        src: "{{ dest }}"
+        dest: /var/lib/jenkins/.kube/
+
+    - name: changing jenkinUrl
+      become: yes
+      template:
+        src: jenkinsUrl.j2
+        dest: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml  
+        
+    - name: restart jenkins
+      become: yes
+      shell: sudo systemctl restart jenkins    

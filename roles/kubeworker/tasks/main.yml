@@ -1,0 +1,73 @@
+---
+# tasks file for kubeworker
+
+  - name: collect instance facts
+    local_action: ec2_instance_info
+    args:  
+          region: "{{ region }}"
+          filters:
+              "tag:env": "prod"
+              instance-state-name: [ "running" ]
+    register: instance_info  
+
+  - name: "set fact: All private Ips"
+    local_action: set_fact
+    args:
+        all_private_ips: "{{ all_private_ips | default({}) | combine({ item.tags.Name: item.private_ip_address }) }}"
+    loop: "{{ instance_info.instances }}" 
+
+  - debug:
+      var:  all_private_ips 
+  
+  - shell: hostnamectl
+    register: hostname 
+
+  - name: promote the "token" fact from the masters group
+    set_fact:
+      token: '{{ Master.token }}'
+    vars:
+      Master: '{{ hostvars[groups["tag_Name_Master"][0]] }}'
+
+  - debug:
+      var: token   
+
+  - name: promote the "sha" fact from the masters group
+    set_fact:
+      sha: '{{ Master.sha }}'
+    vars:
+      Master: '{{ hostvars[groups["tag_Name_Master"][0]] }}'
+
+  - debug:
+      var: sha   
+
+  - shell: hostname
+    register: host_name
+  
+  - set_fact:
+      host_name: "{{ host_name.stdout_lines[0] }}" 
+      
+  - debug:
+      var: host_name
+
+  - name: send node.yml
+    become_user: root
+    template:
+        src: node.yml.j2
+        dest: /etc/kubernetes/node.yml
+        mode: '0744'   
+
+  - name: join cluster
+    become: yes
+    shell: "sudo kubeadm join  --config /etc/kubernetes/node.yml"
+
+  # - name: join cluster
+  #   become: root
+  #   shell: "{{ join_command }} --ignore-preflight-errors all  >> node_joined.sh"    
+    # args:    
+    #   chdir: $HOME    
+    #   creates: node_joined.sh
+
+  # - name: run join command
+  #   shell: ./node_joined.sh 
+      # chdir: $HOME
+      # cmd: node_joined.sh  

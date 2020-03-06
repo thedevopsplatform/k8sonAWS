@@ -1,0 +1,8 @@
+- name: creating internet gateway
+  local_action: ec2_vpc_igw
+  args:
+    vpc_id: "{{ myvpc.vpc.id }}"
+    state: present
+    tags:
+      kubernetes.io/cluster/kubernetes: owned
+  register: igw

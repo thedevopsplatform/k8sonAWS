@@ -1,0 +1,213 @@
+---
+- name: Set up infra
+  hosts: localhost
+  gather_facts: no
+  roles:
+    - infra
+    - ec2-asg
+
+  tasks:
+
+    - name: Refresh in-memory inventory
+      meta: refresh_inventory   
+
+    - name: collect instance facts
+      local_action: ec2_instance_info
+      args:  
+            region: "{{ region }}"
+            filters:
+              "tag:env": "prod"
+              instance-state-name: [ "running" ]
+      register: instance_info    
+
+    - name: "set fact: Instance ips"
+      set_fact:
+          pub_instance_ips: "{{ pub_instance_ips | default({}) | combine({ item.tags.Name: item.public_ip_address}) }}"
+      loop: "{{ instance_info.instances | json_query(\"[?public_ip_address]\") | list }}"
+
+    - debug:
+        var: pub_instance_ips
+
+    - name: set ssh agent
+      become: yes
+      template:
+        src: ssh_config.conf.j2
+        dest: /etc/ssh/ssh_config
+      
+    - name: set ansible-cfg
+      become: yes
+      template:
+        src: myansi.cfg.j2
+        dest: /etc/ansible/ansible.cfg 
+
+    - name: "set fact: All private Ips"
+      local_action: set_fact
+      args:
+          all_private_ips: "{{ all_private_ips | default({}) | combine({ item.tags.Name: item.private_ip_address }) }}"
+      loop: "{{ instance_info.instances }}" 
+
+    - name: set hosts file
+      become: yes
+      template:
+        src: hosts.j2
+        dest: ./hosts      
+
+- name: Fetch Bastion Public Key
+  hosts: tag_Name_bastion
+  become_user: ansibleuser
+  become: yes
+  tasks:
+
+    - name: fetch bastion public ssh keys
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_key   
+
+    - name: set bastion id_rsa.pub
+      set_fact:
+        bastion_pub_ssh: "{{ ssh_key.stdout_lines[0] }}"
+        cacheable: yes 
+
+- name: Fetch Masternode Public Key
+  hosts: tag_Name_Master
+  become_user: ansibleuser
+  become: yes
+  tasks:
+
+    - name: fetch masternode public ssh keys
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_key   
+
+    - name: set masternode id_rsa.pub
+      set_fact:
+        master_pub_ssh: "{{ ssh_key.stdout_lines[0] }}"
+        cacheable: yes 
+
+- name: copying keys ssh
+  hosts: localhost
+  become: yes
+  tasks:
+  
+    - name: promote the "bastion_pub_ssh" fact from the bastion group
+      set_fact:
+        bastion_pub_ssh: "{{ bastion.bastion_pub_ssh }}"
+      vars:
+        bastion: "{{ hostvars[groups['tag_Name_bastion'][0]] }}"
+
+    - name: adding to the local id_rsa.pub
+      lineinfile:
+        path: ./id_rsa.pub
+        line: "{{ bastion_pub_ssh }}"  
+
+    - name: promote the "master_pub_ssh" fact from the master group
+      set_fact:
+        master_pub_ssh: "{{ master.master_pub_ssh }}"
+      vars:
+        master: "{{ hostvars[groups['tag_Name_Master'][0]] }}"
+
+    - name: adding to the local id_rsa.pub
+      lineinfile:
+        path: ./id_rsa.pub
+        line: "{{ master_pub_ssh }}"      
+
+- name: --- Set keys and modify hosts on bastion ---
+  hosts: tag_Name_bastion
+  become_user: ansibleuser
+  become: yes
+  tasks:
+    - name: copy auth keys
+      copy: 
+        src: ./id_rsa.pub
+        dest: ~/.ssh/authorized_keys
+
+    - name: copy hosts file
+      become_user: root
+      copy: 
+        src: ./hosts
+        dest: /etc/hosts  
+
+- name: --- Set keys and modify hosts on Kube Master ---
+  hosts: tag_Name_Master
+  become_user: ansibleuser
+  become: yes
+  tasks:
+    - name: copy auth keys
+      copy: 
+        src: ./id_rsa.pub
+        dest: ~/.ssh/authorized_keys
+
+    - name: copy hosts file
+      become_user: root
+      copy: 
+        src: ./hosts
+        dest: /etc/hosts 
+
+- name: --- Set keys and hosts on Worker Nodes ---
+  hosts: tag_Name_Worker1, tag_Name_Worker2
+  become_user: ansibleuser
+  become: yes
+  tasks:
+    - name: copy auth keys
+      copy: 
+        src: ./id_rsa.pub
+        dest: ~/.ssh/authorized_keys
+
+    - name: copy hosts file
+      become_user: root
+      copy: 
+        src: ./hosts
+        dest: /etc/hosts 
+
+- name: --- Setting up Kubernetes master for the cluster ---
+  hosts: tag_Name_Master
+  become_user: ansibleuser
+  become: yes
+  roles:
+    - kubemaster
+
+- name: --- Setting up Kubernetes worker1 for the cluster ---
+  hosts: tag_Name_Worker1
+  become_user: ansibleuser
+  become: yes
+  roles:
+    - kubeworker  
+
+- name: --- Setting up Kubernetes worker2 for the cluster ---
+  hosts: tag_Name_Worker2
+  become_user: ansibleuser
+  become: yes
+  roles:
+    - kubeworker  
+
+- name: --- Copying Kubeconfig to jenkins Server ----
+  hosts: tag_Name_bastion
+  gather_facts: no
+  become: sudo
+  roles:
+    - bastion
+
+- name: --- Install Helm and set up Ingress for the cluster ---
+  hosts: tag_Name_Master
+  become_user: ansibleuser
+  become: yes
+  tasks:
+
+    - name: Install helm
+      become: yes
+      shell: curl https://get.helm.sh/helm-v3.1.0-rc.3-linux-amd64.tar.gz > helm.tar.gz && tar -xvf helm.tar.gz  && cd linux-amd64/ && sudo mv helm /usr/local/bin && helm init && helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+    
+    # - name: Install nginx-ingress
+    #   become: yes
+    #   shell: helm install stable/nginx-ingress --set rbac.create=true --generate-name
+    # - name: create helm chart
+    #   become: yes
+    #   shell: helm create mychart
+    
+    # - name: copy custom.yml
+    #   become: yes
+    #   copy:
+    #     src: custom.yml
+    #     dest: ./mychart
+    
+    # - name: install nginx-ingress
+    #   become: sudo 
+    #   script: helmscript.sh

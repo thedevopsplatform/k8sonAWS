@@ -1,0 +1,89 @@
+---
+# tasks file for kubemaster
+    - name: collect instance facts
+      local_action: ec2_instance_info
+      args:  
+            region: "{{ region }}"
+            filters:
+              "tag:env": "prod"
+              instance-state-name: [ "running" ]
+      register: instance_info  
+
+    - name: "set fact: All private Ips"
+      local_action: set_fact
+      args:
+          all_private_ips: "{{ all_private_ips | default({}) | combine({ item.tags.Name: item.private_ip_address }) }}"
+      loop: "{{ instance_info.instances }}" 
+
+    - debug:
+        var:  all_private_ips 
+
+    - name: copy aws.yml config
+      become_user: root
+      copy:
+        src: aws.yml
+        dest: /etc/kubernetes/
+        mode: '0744'
+
+    - name: send kubeinit command 
+      become: yes
+      template:
+        src: kubeinit.sh.j2
+        dest: ./kubeinit.sh
+        mode: '0744'
+
+    - name: execute kubeinit command
+      shell: ./kubeinit.sh >> kubeinit.txt 
+
+    - name: send kubeinit-extra command 
+      become: yes
+      copy:
+        src: kubecmd.sh
+        dest: ./kubecmd.sh
+        mode: '0744'
+
+    - name: execute kubeinit command
+      shell: ./kubecmd.sh
+    
+    - name: fetch some.txt
+      fetch:  
+        src: $HOME/.kube/config
+        dest: /tmp/
+      register: fetch
+    
+    - name: send network.sh command 
+      become: yes
+      copy:
+        src: network.sh
+        dest: ./network.sh
+        mode: '0744'
+
+    - name:  set up pod network
+      shell: ./network.sh
+
+    - name: create token
+      shell: kubeadm token create --print-join-command
+      register: token
+
+    - set_fact:
+        join_command: "{{ token.stdout_lines[0] }}"  
+    
+    - shell: echo {{ join_command }} >> jc
+
+    - shell: awk '{print $5}' jc
+      register: token 
+
+    - set_fact:
+        token: "{{ token.stdout_lines[0] }}" 
+
+    - shell: awk '{print $7}' jc
+      register: sha   
+
+    - set_fact:
+        sha: "{{ sha.stdout_lines[0] }}" 
+
+    - debug:
+        var: token
+
+    - debug:
+        var: sha
